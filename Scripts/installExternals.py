@@ -721,7 +721,7 @@ OPENSUBDIV = Dependency(OPENSUBDIV_INSTALL_FOLDER, OPENSUBDIV_PACKAGE_NAME, Inst
 ############################################################
 # MaterialX
 
-MATERIALX_URL = "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.3.zip"
+MATERIALX_URL = "https://github.com/AcademySoftwareFoundation/MaterialX/archive/v1.39.4.zip"
 MATERIALX_INSTALL_FOLDER = "MaterialX"
 MATERIALX_PACKAGE_NAME = "MaterialX"
 
@@ -994,6 +994,28 @@ def InstallGTEST(context, force, buildArgs):
 GTEST = Dependency(GTEST_INSTALL_FOLDER, GTEST_PACKAGE_NAME, InstallGTEST, GTEST_URL, "include/gtest/gtest.h")
 
 ############################################################
+# NVIDIA MDL SDK
+
+if Windows():
+    MDL_URL = "https://github.com/NVIDIA/MDL-SDK/releases/download/2025/MDL-SDK-2025.0.0-387700.1252-nt-x86-64.zip"
+elif MacOS():
+    MDL_URL = "https://github.com/NVIDIA/MDL-SDK/releases/download/2025/MDL-SDK-2025.0.0-387700.1252-macosx-aarch64.tgz"
+else:
+    MDL_URL = "https://github.com/NVIDIA/MDL-SDK/releases/download/2025/MDL-SDK-2025.0.0-387700.1252-linux-x86-64.tgz"
+MDL_INSTALL_FOLDER = "MDL"
+MDL_PACKAGE_NAME = "mdl"
+MDL_VERSION_STRING = "2025.0.0"
+
+def InstallMDL(context, force, buildArgs):
+    with CurrentWorkingDirectory(DownloadURL(MDL_URL, context, force)):
+        CopyDirectory(context, "include", "include", MDL_INSTALL_FOLDER)
+        CopyDirectory(context, "bin", "bin", MDL_INSTALL_FOLDER)
+        CopyDirectory(context, "lib", "lib", MDL_INSTALL_FOLDER)
+        CopyDirectory(context, "share", "share", MDL_INSTALL_FOLDER)
+
+MDL = Dependency(MDL_INSTALL_FOLDER, MDL_PACKAGE_NAME, InstallMDL, MDL_VERSION_STRING, "include/mi/mdl_sdk.h")
+
+############################################################
 # Installation script
 
 programDescription = """\
@@ -1230,7 +1252,8 @@ requiredDependencies = [ZLIB,
                         GLEW,
                         GLFW,
                         CXXOPTS,
-                        GTEST]
+                        GTEST,
+                        MDL]
 
 # Assume some external librraies already exist on Linux platforms and don't build
 # our own. This avoids potential issues where a host application loads an older version

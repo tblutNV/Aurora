@@ -13,13 +13,36 @@
 // limitations under the License.
 #include "BSDF.slang"
 
-// Compute shading from material emission.
-float3 shadeEmission(Material material)
+#if defined(MDL)
+int mdlEventTypeToLobeID(Bsdf_event_type eventType)
 {
+    int lobeID = NO_SECONDARY_RAY;
+    if ((eventType & BSDF_EVENT_DIFFUSE_REFLECTION) != 0)
+        lobeID = DIFFUSE_LOBE;
+    else if ((eventType & BSDF_EVENT_GLOSSY_REFLECTION) != 0)
+        lobeID = GLOSSY_LOBE;
+    else if ((eventType & BSDF_EVENT_TRANSMISSION) != 0)
+        lobeID = TRANSMISSION_LOBE;
+    return lobeID;
+}
+#endif
+
+// Compute shading from material emission.
+float3 shadeEmission(Material material, ShadingData shading)
+{
+#if defined(MDL)
+    Edf_evaluate_data evalData = (Edf_evaluate_data)0;
+    evalData.k1 = -WorldRayDirection();
+    mdl_surface_emission_evaluate(evalData, shading);
+
+    float3 intensity = mdl_surface_emission_intensity(shading);
+    float3 emission = evalData.edf * intensity;
+#else
     // Compute emission from the material properties. The emission is affected by the coat, i.e. the
     // coat is on top of a glowing layer.
     float3 emissionCoatBlend = lerp(WHITE, material.coatColor, material.coat);
     float3 emission          = material.emission * material.emissionColor * emissionCoatBlend;
+#endif // MDL
 
     return emission;
 }
@@ -35,7 +58,19 @@ float3 shadeDirectionalLight(float3 dir, float4 colorAndIntensity, float cosRadi
     float3 L      = sampleCone(random, dir, cosRadius);
 
     // Evaluate the BSDF of the material, using the view direction and light direction.
+#if defined(MDL)
+    Bsdf_evaluate_data evalData = (Bsdf_evaluate_data)0;
+    evalData.ior1 = shading.ior.x;
+    evalData.ior2 = shading.ior.y;
+    evalData.k1 = -WorldRayDirection();
+    evalData.k2 = L;
+
+    mdl_surface_scattering_evaluate(evalData, shading);
+
+    float3 bsdfAndCosine = evalData.bsdf_diffuse + evalData.bsdf_glossy;
+#else
     float3 bsdfAndCosine = evaluateMaterial(material, shading, V, L);
+#endif
     if (isBlack(bsdfAndCosine))
     {
         shadowRayDirection = float3(0.f);
@@ -66,7 +101,19 @@ float3 shadeEnvironmentLightDirect(Environment environment,
     float3 lightRadiance = sampleEnvironment(environment, random, L, pdf);
 
     // Evaluate the BSDF of the material, using the view direction and light direction.
+#if defined(MDL)
+    Bsdf_evaluate_data evalData = (Bsdf_evaluate_data)0;
+    evalData.ior1 = shading.ior.x;
+    evalData.ior2 = shading.ior.y;
+    evalData.k1 = -WorldRayDirection();
+    evalData.k2 = L;
+
+    mdl_surface_scattering_evaluate(evalData, shading);
+
+    float3 bsdfAndCosine = evalData.bsdf_diffuse + evalData.bsdf_glossy;
+#else
     float3 bsdfAndCosine = evaluateMaterial(material, shading, V, L);
+#endif
     if (isBlack(bsdfAndCosine))
     {
         return BLACK;
@@ -111,10 +158,26 @@ void shadeEnvironmentLightMIS(Environment environment, Material material,
     // Step 1: Sample the BSDF of the material, using the view direction. In addition to the BSDF
     // value, this computes a sample (light) direction and the corresponding PDF value for that
     // direction.
+#if defined(MDL)
+    Bsdf_sample_data sampleData = (Bsdf_sample_data)0;
+    sampleData.ior1 = shading.ior.x;
+    sampleData.ior2 = shading.ior.y;
+    sampleData.k1 = -WorldRayDirection();
+    sampleData.xi = random4D(rng);
+
+    mdl_surface_scattering_sample(sampleData, shading);
+
+    float3 L = sampleData.k2;
+    float materialPDF = sampleData.pdf;
+    float3 bsdfAndCosine = sampleData.bsdf_over_pdf * sampleData.pdf;
+
+    lobeID = mdlEventTypeToLobeID(sampleData.event_type);
+#else
     float3 L;
     float materialPDF;
     float3 bsdfAndCosine =
         sampleMaterial(material, shading, V, random, L, materialPDF, lobeID);
+#endif
 
     // If the sampled lobe is transmission, simply return black. Transmission is handled separately,
     // and does not repond to lighting.
@@ -158,8 +221,21 @@ void shadeEnvironmentLightMIS(Environment environment, Material material,
 
     // Step 6: Evaluate the BSDF of the material, using the view direction and light direction, and
     // calculate the material PDF for the light direction.
+#if defined(MDL)
+    Bsdf_evaluate_data evalData = (Bsdf_evaluate_data)0;
+    evalData.ior1 = shading.ior.x;
+    evalData.ior2 = shading.ior.y;
+    evalData.k1 = V;
+    evalData.k2 = L;
+
+    mdl_surface_scattering_evaluate(evalData, shading);
+
+    bsdfAndCosine = evalData.bsdf_diffuse + evalData.bsdf_glossy;
+    materialPDF = evalData.pdf;
+#else
     int evaluatedLobeID;
     bsdfAndCosine = evaluateMaterialAndPDF(material, shading, V, L, random, materialPDF, evaluatedLobeID);
+#endif
 
     // Skip the following steps if the light radiance or BSDF-and-cosine is black.
     if (!isBlack(lightRadiance) && !isBlack(bsdfAndCosine))
@@ -184,20 +260,32 @@ void shadeEnvironmentLightMIS(Environment environment, Material material,
 
 // Sample the BSDF to generate the next indirect ray in the path, and set output parameters for the next ray's origin, direction, and color.
 // Return the ID of the lobe that was sampled.
-int setupIndirectLightRay(Material material, ShadingData shading, float3 V, int depth,
-    int maxDepth, inout Random rng, inout float3 indirectRayDirec, inout float3 indirectRayOrigin, inout float3 indirectColorOut)
+int setupIndirectLightRay(Material material, ShadingData shading, float3 V,
+    inout Random rng, inout float3 indirectRayDirec, inout float3 indirectRayOrigin, inout float3 indirectColorOut)
 {
-    // Generate random numbers for sampling.
-    float2 random = random2D(rng);
-
     // Sample the BSDF of the material, using the view direction. In addition to the BSDF value,
     // this computes a sample (light) direction and the corresponding probability density function
     // (PDF) value for that direction.
+#if defined(MDL)
+    Bsdf_sample_data sampleData = (Bsdf_sample_data)0;
+    sampleData.ior1 = shading.ior.x;
+    sampleData.ior2 = shading.ior.y;
+    sampleData.k1 = -WorldRayDirection();
+    sampleData.xi = random4D(rng);
+
+    mdl_surface_scattering_sample(sampleData, shading);
+
+    float3 L = sampleData.k2;
+    float pdf = sampleData.pdf;
+    float3 bsdfAndCosine = sampleData.bsdf_over_pdf * sampleData.pdf;
+    int lobeID = mdlEventTypeToLobeID(sampleData.event_type);
+#else
     float3 L;
     float pdf;
     int lobeID;
     float3 bsdfAndCosine =
-        sampleMaterial(material, shading, V, random, L, pdf, lobeID);
+        sampleMaterial(material, shading, V, random2D(rng), L, pdf, lobeID);
+#endif
     if (isBlack(bsdfAndCosine))
     {
         return NO_SECONDARY_RAY;

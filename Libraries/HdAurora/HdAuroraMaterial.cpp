@@ -67,9 +67,9 @@ static const string nodeGraphBindingTemplate = R"(
 static const string nodeGraphImageTemplate = R"(
   <nodegraph name="NG%s">
     <image name="%s" type="%s">
-      <parameter name="file" type="filename" value="" />
-      <parameter name="uaddressmode" type="string" value="periodic" />
-      <parameter name="vaddressmode" type="string" value="periodic" />
+      <input name="file" type="filename" value="" />
+      <input name="uaddressmode" type="string" value="periodic" />
+      <input name="vaddressmode" type="string" value="periodic" />
     </image>
     <output name="out1" type="%s" nodename="%s" />
   </nodegraph>)";
@@ -77,9 +77,9 @@ static const string nodeGraphImageTemplate = R"(
 static const string nodeGraphNormalMapTemplate = R"(
   <nodegraph name="NG%s">
     <image name="%s" type="vector3">
-      <parameter name="file" type="filename" value="" />
-      <parameter name="uaddressmode" type="string" value="periodic" />
-      <parameter name="vaddressmode" type="string" value="periodic" />
+      <input name="file" type="filename" value="" />
+      <input name="uaddressmode" type="string" value="periodic" />
+      <input name="vaddressmode" type="string" value="periodic" />
     </image>
     <normalmap name="%s_image" type="vector3">
       <input name="in" type="vector3" nodename="%s" />

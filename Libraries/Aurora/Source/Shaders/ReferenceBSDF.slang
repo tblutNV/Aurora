@@ -94,7 +94,7 @@ BSDF_AND_COSINE evaluateMaterialAndPDF(Material material, ShadingData shading, f
     if (!sameHemisphere(V, L))
     {
         pdf    = 0.0;
-        lobeID = -1;
+        lobeID = NO_SECONDARY_RAY;
         return BLACK;
     }
 

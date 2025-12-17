@@ -25,7 +25,11 @@
 #include "PTShaderLibrary.h"
 
 #if ENABLE_MATERIALX
+#if ENABLE_MDL
+#include "MaterialX/MDLMaterialGenerator.h"
+#else
 #include "MaterialX/MaterialGenerator.h"
+#endif
 #endif
 
 #include <functional>
@@ -34,7 +38,7 @@
 
 BEGIN_AURORA
 
-#define kBuiltInMissShaderCount 2 // "built-in" miss shaders: null and shadow
+#define kBuiltInMissShaderCount 3 // "built-in" miss shaders: null, instance, and shadow
 
 // Maximum number of textures per material from
 #define kMaterialMaxTextures 8
@@ -103,7 +107,8 @@ struct HitGroupShaderRecord
 {
     // Constructor.
     HitGroupShaderRecord(const void* pShaderIdentifier, const PTGeometry::GeometryBuffers& geometry,
-        int instanceBufferOffset, bool isOpaque)
+        int instanceBufferOffset, int instanceMaterialBufferOffset, int instanceMaterialArgumentsOffset,
+        bool isOpaque)
     {
         ::memcpy_s(&ShaderIdentifier, SHADER_ID_SIZE, pShaderIdentifier, SHADER_ID_SIZE);
         IndexBufferAddress    = geometry.IndexBuffer;
@@ -116,7 +121,9 @@ struct HitGroupShaderRecord
         TexCoordBufferAddress = HasTexCoords ? geometry.TexCoordBuffer : 0;
         IsOpaque              = isOpaque;
 
-        InstanceBufferOffset = instanceBufferOffset;
+        InstanceBufferOffset  = instanceBufferOffset;
+        InstanceMaterialBufferOffset = instanceMaterialBufferOffset;
+        InstanceMaterialArgumentsOffset = instanceMaterialArgumentsOffset;
     }
 
     // Copies the contents of the shader record to the specified mapped buffer.
@@ -150,6 +157,8 @@ struct HitGroupShaderRecord
     uint32_t HasTexCoords;
     uint32_t IsOpaque;
     uint32_t InstanceBufferOffset;
+    uint32_t InstanceMaterialBufferOffset;
+    uint32_t InstanceMaterialArgumentsOffset;
 };
 
 PTInstance::PTInstance(PTScene* pScene, const PTGeometryPtr& pGeometry,
@@ -249,7 +258,7 @@ PTScene::PTScene(PTRenderer* pRenderer, uint32_t numRendererDescriptors) : Scene
 
     // Compute the shader record strides.
     _missShaderRecordStride     = HitGroupShaderRecord::stride(); // shader ID, no other parameters
-    _missShaderRecordCount      = kBuiltInMissShaderCount;        // null, and shadow
+    _missShaderRecordCount      = kBuiltInMissShaderCount;        // null, instance, and shadow
     _hitGroupShaderRecordStride = HitGroupShaderRecord::stride();
 
     // Use the default environment and ground plane.
@@ -273,28 +282,47 @@ PTScene::PTScene(PTRenderer* pRenderer, uint32_t numRendererDescriptors) : Scene
 #if ENABLE_MATERIALX
     // Get the materialX folder relative to the module path.
     string mtlxFolder = Foundation::getModulePath() + "MaterialX";
+
     // Initialize the MaterialX code generator.
+#if ENABLE_MDL
+    _pMaterialXGenerator = make_unique<MaterialXCodeGen::MDLMaterialGenerator>(
+        renderer()->mdlSdk(), mtlxFolder, renderer());
+#else
     _pMaterialXGenerator = make_unique<MaterialXCodeGen::MaterialGenerator>(mtlxFolder);
+#endif
 
     // Default to MaterialX distance unit to centimeters.
+#if ENABLE_MDL
     _pShaderLibrary->setOption(
-        "DISTANCE_UNIT", _pMaterialXGenerator->codeGenerator().units().indices.at("centimeter"));
+        "DISTANCE_UNIT", _pMaterialXGenerator->indexForUnit("centimeter"));
+#else
+    _pShaderLibrary->setOption("DISTANCE_UNIT",
+        _pMaterialXGenerator->codeGenerator().units().indices.at("centimeter"));
 #endif
+
+#endif // ENABLE_MATERIALX
 }
 void PTScene::setUnit(const string& unit)
 {
 #if ENABLE_MATERIALX
     // Get the units option.
     // Lookup the unit in the code generator, and ensure it is valid.
+#if ENABLE_MDL
+    int unitIndex = _pMaterialXGenerator->indexForUnit(unit);
+#else
     auto unitIter = _pMaterialXGenerator->codeGenerator().units().indices.find(unit);
-    if (unitIter == _pMaterialXGenerator->codeGenerator().units().indices.end())
+    int unitIndex = unitIter == _pMaterialXGenerator->codeGenerator().units().indices.end()
+        ? -1
+        : unitIter->second;
+#endif
+    if (unitIndex == -1)
     {
-        AU_ERROR("Invalid unit:" + unit);
+        AU_ERROR("Invalid unit: " + unit);
     }
     else
     {
         // Set the option in the shader library.
-        shaderLibrary().setOption("DISTANCE_UNIT", unitIter->second);
+        shaderLibrary().setOption("DISTANCE_UNIT", unitIndex);
     }
 #endif
 }
@@ -388,10 +416,21 @@ IMaterialPtr PTScene::createMaterialPointer(
     // Create the material object with the material shader and definition.
     auto pNewMtl = make_shared<PTMaterial>(_pRenderer, name, pShader, pDef);
 
+
     // Set the default textures on the new material.
     for (int i = 0; i < pDef->defaults().textures.size(); i++)
     {
-        auto txtDef = pDef->defaults().textures[i];
+        const auto& txtDef = pDef->defaults().textures[i];
+
+#if ENABLE_MATERIALX && ENABLE_MDL
+        // Assign MDL texture
+        if (pDef->hasMdlData())
+        {
+            const auto& pImage = pDef->mdlData()->textures[i];
+            pNewMtl->setImage(txtDef.name.image, pImage);
+            continue;
+        }
+#endif
 
         // Image default values are provided as strings and must be loaded.
         auto textureFilename = txtDef.defaultFilename;
@@ -445,6 +484,8 @@ IMaterialPtr PTScene::createMaterialPointer(
             // If loaded successfully.
             if (pImage)
             {
+                AU_INFO("%s: setting %s with path %s", name.c_str(), txtDef.name.image.c_str(), textureFilename.c_str());
+
                 // Set the default image for this texture definition.
                 pNewMtl->setImage(txtDef.name.image, pImage);
             }
@@ -497,7 +538,8 @@ IMaterialPtr PTScene::createMaterialPointer(
     return pNewMtl;
 }
 
-shared_ptr<MaterialShader> PTScene::generateMaterialX([[maybe_unused]] const string& document,
+shared_ptr<MaterialShader> PTScene::generateMaterialX(
+    [[maybe_unused]] const string& document,
     [[maybe_unused]] shared_ptr<MaterialDefinition>* pDefOut)
 {
 #if ENABLE_MATERIALX
@@ -604,10 +646,12 @@ void PTScene::update()
     SceneBase::update();
 }
 
-void PTScene::computeMaterialTextureCount(int& textureCountOut, int& samplerCountOut)
+void PTScene::computeMaterialTextureCount(
+    int& textureCountOut, int& texture3DCountOut, int& samplerCountOut)
 {
     // Clear material texture vector and lookup map.
     _activeMaterialTextures.clear();
+    _activeMaterialTextures3D.clear();
     _materialTextureIndexLookup.clear();
     _activeMaterialSamplers.clear();
     _materialSamplerIndexLookup.clear();
@@ -625,7 +669,6 @@ void PTScene::computeMaterialTextureCount(int& textureCountOut, int& samplerCoun
     // Iterate through all active materials.
     for (PTMaterial& mtl : _materials.active().resources<PTMaterial>())
     {
-
         // Iterate through all material's textures.
         for (int i = 0; i < mtl.textures().count(); i++)
         {
@@ -636,8 +679,16 @@ void PTScene::computeMaterialTextureCount(int& textureCountOut, int& samplerCoun
             if (pTxt &&
                 _materialTextureIndexLookup.find(pTxt.get()) == _materialTextureIndexLookup.end())
             {
-                _materialTextureIndexLookup[pTxt.get()] = int(_activeMaterialTextures.size());
-                _activeMaterialTextures.push_back(pTxt.get());
+                if (pTxt->is3D())
+                {
+                    _materialTextureIndexLookup[pTxt.get()] = int(_activeMaterialTextures3D.size());
+                    _activeMaterialTextures3D.push_back(pTxt.get());
+                }
+                else
+                {
+                    _materialTextureIndexLookup[pTxt.get()] = int(_activeMaterialTextures.size());
+                    _activeMaterialTextures.push_back(pTxt.get());
+                }
             }
 
             // Add the sampler to the active sampler array and lookup (If we've not seen this
@@ -654,8 +705,9 @@ void PTScene::computeMaterialTextureCount(int& textureCountOut, int& samplerCoun
     }
 
     // Return count.
-    textureCountOut = int(_activeMaterialTextures.size());
-    samplerCountOut = int(_activeMaterialSamplers.size());
+    textureCountOut   = int(_activeMaterialTextures.size());
+    texture3DCountOut = int(_activeMaterialTextures3D.size());
+    samplerCountOut   = int(_activeMaterialSamplers.size());
 }
 
 void PTScene::updateResources()
@@ -763,8 +815,8 @@ void PTScene::updateResources()
         _materialOffsetLookup.clear();
 
         // Rebuild material texture lookup map.
-        int globalTextureCount, globalSamplerCount;
-        computeMaterialTextureCount(globalTextureCount, globalSamplerCount);
+        int globalTextureCount, globalTexture3DCount, globalSamplerCount;
+        computeMaterialTextureCount(globalTextureCount, globalTexture3DCount, globalSamplerCount);
 
         // Starting at beginning of buffer, work out where each material is global byte address
         // buffer.
@@ -784,6 +836,12 @@ void PTScene::updateResources()
 
             AU_ASSERT(sizeof(MaterialHeader) == kMaterialHeaderSize, "Header size mismatch");
 
+        #if ENABLE_MATERIALX && ENABLE_MDL
+            if (mtl.definition()->hasMdlData())
+            {
+                globalMaterialBufferSize += mtl.definition()->mdlData()->roDataSegment.size();
+            }
+        #endif
             // Increment by size of this material's properties.
             globalMaterialBufferSize += mtl.uniformBuffer().size();
         }
@@ -844,15 +902,40 @@ void PTScene::updateResources()
             sizeLeft -= headerSize;
             pMtlData += headerSize;
 
-            // Write the properties from material's uniform buffer.
-            auto& uniformBuffer = mtl.uniformBuffer();
-            size_t bufferSize   = uniformBuffer.size();
-            float* pSrcData     = (float*)uniformBuffer.data();
-            ::memcpy_s(pMtlData, sizeLeft, pSrcData, bufferSize);
+#if ENABLE_MATERIALX && ENABLE_MDL
+            if (mtl.definition()->hasMdlData())
+            {
+                const auto& roData = mtl.definition()->mdlData()->roDataSegment;
+                if (roData.size() > 0)
+                {
+                    size_t bufferSize = roData.size();
+                    ::memcpy_s(pMtlData, sizeLeft, roData.data(), bufferSize);
+                    sizeLeft -= bufferSize;
+                    pMtlData += bufferSize;
+                }
 
-            // Move pointer to next material.
-            sizeLeft -= bufferSize;
-            pMtlData += bufferSize;
+                auto& uniformBuffer = mtl.uniformBuffer();
+                if (uniformBuffer.size() > 0)
+                {
+                    size_t bufferSize = uniformBuffer.size();
+                    ::memcpy_s(pMtlData, sizeLeft, uniformBuffer.data(), bufferSize);
+                    sizeLeft -= bufferSize;
+                    pMtlData += bufferSize;
+                }
+            }
+            else
+#endif
+            {
+                // Write the properties from material's uniform buffer.
+                auto& uniformBuffer = mtl.uniformBuffer();
+                size_t bufferSize   = uniformBuffer.size();
+                float* pSrcData = (float*)uniformBuffer.data();
+                ::memcpy_s(pMtlData, sizeLeft, pSrcData, bufferSize);
+
+                // Move pointer to next material.
+                sizeLeft -= bufferSize;
+                pMtlData += bufferSize;
+            }
         }
         _globalMaterialBuffer.unmap();
 
@@ -920,6 +1003,7 @@ PTScene::InstanceData PTScene::createInstanceData(const PTInstance& instance)
     InstanceData res(instance);
     res.mtlBufferOffset = _materialOffsetLookup[instance.material().get()];
     res.pGeometry       = instance.dxGeometry();
+    res.pMaterial       = instance.material();
     res.isOpaque        = instance.material() ? instance.material()->isOpaque() : true;
 
     for (int i = 0; i < instance.materialLayers().size(); i++)
@@ -1044,7 +1128,7 @@ void PTScene::updateDescriptorHeap()
         // renderer and environment.
         D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
         heapDesc.NumDescriptors = _numRendererDescriptors + int(_activeMaterialTextures.size()) +
-            _pEnvironment->descriptorCount();
+            int(_activeMaterialTextures3D.size()) + _pEnvironment->descriptorCount();
         heapDesc.Type  = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         checkHR(pDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&_pDescriptorHeap)));
@@ -1085,6 +1169,14 @@ void PTScene::updateDescriptorHeap()
     {
         // Create a SRV (descriptor) on the descriptor heap for the texture.
         PTImage::createSRV(*_pRenderer, _activeMaterialTextures[i], handle);
+        handle.Offset(handleIncrement);
+    }
+
+    // Create the descriptors for the material 3D textures.
+    for (int i = 0; i < _activeMaterialTextures3D.size(); i++)
+    {
+        // Create a SRV (descriptor) on the descriptor heap for the texture.
+        PTImage::createSRV(*_pRenderer, _activeMaterialTextures3D[i], handle);
         handle.Offset(handleIncrement);
     }
 
@@ -1237,17 +1329,30 @@ void PTScene::updateShaderTables()
         // copying the shader record data to the shader table.
         for (InstanceData& instData : _lstInstanceData)
         {
+        #if ENABLE_MATERIALX && ENABLE_MDL
+            const string& materialId = instData.pMaterial->shader()->id();
+        #else
+            const string materialId = "Default";
+        #endif
+            wstring hitGroupName = _pShaderLibrary->getMaterialHitGroupName(materialId);
+
             // Get the hit group shader ID from the material shader, which will change if the shader
             // library is rebuilt.
             const DirectXShaderIdentifier hitGroupShaderID =
-                _pShaderLibrary->getShaderID(PTShaderLibrary::kInstanceHitGroupName);
+                _pShaderLibrary->getShaderID(hitGroupName.c_str());
 
             // Shader record data includes the geometry buffers, the instance constant buffer
             // offset, and opaque flag.
             PTGeometry::GeometryBuffers geometryBuffers = instData.pGeometry->buffers();
             int instanceBufferOffset                    = instData.bufferOffset;
-            HitGroupShaderRecord record(
-                hitGroupShaderID, geometryBuffers, instanceBufferOffset, instData.isOpaque);
+            int instanceMaterialBufferOffset            = instData.mtlBufferOffset;
+            int instanceMaterialArgumentsOffset         = 0;
+#if ENABLE_MATERIALX && ENABLE_MDL
+            instanceMaterialArgumentsOffset = instData.pMaterial->definition()->hasMdlData() ?
+                int(instData.pMaterial->definition()->mdlData()->roDataSegment.size()) : 0;
+#endif
+            HitGroupShaderRecord record(hitGroupShaderID, geometryBuffers, instanceBufferOffset,
+                instanceMaterialBufferOffset, instanceMaterialArgumentsOffset, instData.isOpaque);
             record.copyTo(pShaderTableMappedData);
             pShaderTableMappedData += recordStride;
         }
@@ -1281,6 +1386,10 @@ void PTScene::updateShaderTables()
         // NOTE: The first miss shader is a null shader, used when a miss shader is not needed.
         static array<uint8_t, SHADER_ID_SIZE> kNullShaderID = { 0 };
         ::memcpy_s(pShaderTableMappedData, SHADER_ID_SIZE, kNullShaderID.data(), SHADER_ID_SIZE);
+        pShaderTableMappedData += _missShaderRecordStride;
+        ::memcpy_s(pShaderTableMappedData, SHADER_ID_SIZE,
+            _pShaderLibrary->getShaderID(PTShaderLibrary::kInstanceMissEntryPointName),
+            SHADER_ID_SIZE);
         pShaderTableMappedData += _missShaderRecordStride;
         ::memcpy_s(pShaderTableMappedData, SHADER_ID_SIZE,
             _pShaderLibrary->getShaderID(PTShaderLibrary::kShadowMissEntryPointName),

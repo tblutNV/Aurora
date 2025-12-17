@@ -173,11 +173,21 @@ MaterialBase::MaterialBase(
     const string& name, MaterialShaderPtr pShader, MaterialDefinitionPtr pDef) :
     _pDef(pDef),
     _pShader(pShader),
-    _uniformBuffer(pDef->defaults().propertyDefinitions, pDef->defaults().properties),
     _textures(pDef->defaults().textureNames),
     _name(name)
-
 {
+#if ENABLE_MATERIALX && ENABLE_MDL
+    if (pDef->hasMdlData())
+    {
+        _pUniformBuffer = make_unique<UniformBuffer>(pDef->defaults().propertyDefinitions,
+            pDef->mdlData()->argumentBlockOffsets, pDef->mdlData()->defaultArgumentBlockData);
+    }
+    else
+#endif
+    {
+        _pUniformBuffer = make_unique<UniformBuffer>(
+            pDef->defaults().propertyDefinitions, pDef->defaults().properties);
+    }
 }
 
 void MaterialBase::updateBuiltInMaterial(MaterialBase& mtl)

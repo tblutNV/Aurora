@@ -219,9 +219,9 @@ export Material evaluateDefaultMaterial(
             Material_normalTexRotation(gGlobalMaterialConstants, offset),
             Material_normalTexOffset(gGlobalMaterialConstants, offset));
         float3 normalTexel = sampleNormalTexture(headerOffset, uv, 0.0f).rgb;
-        float3 objectSpaceNormal = calculateNormalFromMap(
+        float3 worldSpaceNormal = calculateNormalFromMap(
             normalTexel, TANGENT_SPACE, 1.0, shading.normal, shading.tangent);
-        materialNormal = normalize(mul((float3x3) shading.objToWorld, objectSpaceNormal));
+        materialNormal = worldSpaceNormal; // No need to transform to world space, normal and tangent are already in world space
 
         isGeneratedNormal = true;
     }

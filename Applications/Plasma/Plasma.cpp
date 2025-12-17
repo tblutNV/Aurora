@@ -589,15 +589,10 @@ bool Plasma::initialize()
     bool bFileLoaded = false;
     if (arguments.count("scene"))
     {
-        string filePath = arguments["scene"].as<string>();
-        bFileLoaded     = loadSceneFile(filePath);
-    }
-
-    // Get the MaterialX file path from the mtlx argument.
-    if (arguments.count("mtlx"))
-    {
-        string mtlxPath = arguments["mtlx"].as<string>();
-        loadMaterialXFile(mtlxPath);
+        string filePath     = arguments["scene"].as<string>();
+        string absParentDir = std::filesystem::absolute(filePath).parent_path().string();
+        _pRenderer->addMdlSearchPath(absParentDir);
+        bFileLoaded = loadSceneFile(filePath);
     }
 
     // If a file was not loaded, create a sample scene.
@@ -625,6 +620,13 @@ bool Plasma::initialize()
         // Fit the camera to the scene bounds, with a special direction for this scene.
         static const vec3 kDefaultDirection = normalize(vec3(0.0f, 0.0f, -1.0f));
         _camera.fit(_sceneContents.bounds, kDefaultDirection);
+    }
+
+    // Get the MaterialX file path from the mtlx argument.
+    if (arguments.count("mtlx"))
+    {
+        string mtlxPath = arguments["mtlx"].as<string>();
+        loadMaterialXFile(mtlxPath);
     }
 
     _pDistantLight = _pScene->addLightPointer(Aurora::Names::LightTypes::kDistantLight);

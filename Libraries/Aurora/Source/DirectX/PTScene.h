@@ -28,6 +28,7 @@ BEGIN_AURORA
 namespace MaterialXCodeGen
 {
 class MaterialGenerator;
+class MDLMaterialGenerator;
 } // namespace MaterialXCodeGen
 
 // -1 is used to indicate an invalid offset in offset buffers passed to GPU.
@@ -103,7 +104,8 @@ public:
     void updateResources();
 
     /*** Functions ***/
-    void computeMaterialTextureCount(int& textureCountOut, int& samplerCountOut);
+    void computeMaterialTextureCount(
+        int& textureCountOut, int& texture3DCountOut, int& samplerCountOut);
     int instanceCount() const { return static_cast<int>(_instances.active().count()); }
     PTEnvironmentPtr environment() const { return _pEnvironment; }
     PTGroundPlanePtr groundPlane() const { return _pGroundPlane; }
@@ -127,6 +129,10 @@ public:
         const string& document, shared_ptr<MaterialDefinition>* pDefOut);
     void setUnit(const string& unit);
 
+    // computeMaterialTextureCount needs to be called before
+    int numActiveMaterialTextures() const { return int(_activeMaterialTextures.size()); }
+    int numActiveMaterialTextures3D() const {return int(_activeMaterialTextures3D.size()); }
+
 private:
     /*** Private Types ***/
 
@@ -136,6 +142,7 @@ private:
     {
         InstanceData(const PTInstance& instance) :
             pGeometry(nullptr),
+            pMaterial(nullptr),
             mtlBufferOffset((int)-1),
             layers({}),
             bufferOffset(-1),
@@ -170,6 +177,7 @@ private:
 
         // Convenience properties, do not effect hash.
         const PTInstance* pInstance;
+        PTMaterialPtr pMaterial;
         bool isOpaque;
         int bufferOffset;
     };
@@ -221,6 +229,7 @@ private:
     map<IImage*, int> _materialTextureIndexLookup;
     map<ISampler*, int> _materialSamplerIndexLookup;
     vector<PTImage*> _activeMaterialTextures;
+    vector<PTImage*> _activeMaterialTextures3D;
     vector<PTSampler*> _activeMaterialSamplers;
     PTGroundPlanePtr _pGroundPlane;
     PTEnvironmentPtr _pEnvironment;
@@ -250,7 +259,11 @@ private:
     map<string, weak_ptr<IImage>> _imageCache;
     // Code generator used to generate MaterialX files.
 #if ENABLE_MATERIALX
+#if ENABLE_MDL
+    unique_ptr<MaterialXCodeGen::MDLMaterialGenerator> _pMaterialXGenerator;
+#else
     unique_ptr<MaterialXCodeGen::MaterialGenerator> _pMaterialXGenerator;
+#endif
 #endif
 };
 

@@ -30,24 +30,71 @@ interface IGeometry
     int getBufferOffset();
 };
 
+float4x4 to4x4(float3x4 m)
+{
+    return float4x4(m[0], m[1], m[2], float4(0.0f, 0.0f, 0.0f, 1.0f));
+}
+
+float3x4 to3x4(float4x4 m)
+{
+    return float3x4(m[0], m[1], m[2]);
+}
 
 // Shading data for an intersection point, with interpolated values from adjacent vertices.
 struct ShadingData
 {
-    float3 position;       // the shading position, which may be slightly above the surface
-    float3 geomPosition;   // the geometric position, interpolated from adjancent vertices
-    float3 normal;         // the shading normal, interpolated from adjancent vertices
-    float2 texCoord;       // the shading texture coordinates, interpolated from adjancent vertices
-    float3 tangent;        // the shading tangent (X), interpolated from adjacent vertices
-    float3 bitangent;      // the shading bitangent (Y), interpolated from adjacent vertices
-    float3 bitangentWorld; // MaterialX (>= 1.39.x) compatibility alias (same as bitangent)
-    float3 objectNormal;   // the shading position in object space (not world space). Used only in
-                           // materialX generated code.
-    float3 objectPosition; // the shading normal in object space (not world space). Used only in
-                           // materialX generated code.
-    float3x4 objToWorld;
+    property float2 texCoord
+    {
+        get { return text_coords[0].xy; }
+        set { text_coords[0] = float3(newValue.x, newValue.y, 0.0f); }
+    }
+
+    property float3 tangent
+    {
+        get { return tangent_u[0]; }
+        set { tangent_u[0] = newValue; }
+    }
+
+    property float3 bitangent
+    {
+        get { return tangent_v[0]; }
+        set { tangent_v[0] = newValue; }
+    }
+
+    // MaterialX (>= 1.39.x) compatibility alias (same as bitangent)
+    property float3 bitangentWorld
+    {
+        get { return tangent_v[0]; }
+        set { tangent_v[0] = newValue; }
+    }
+
+    property float3x4 objToWorld
+    {
+        get { return to3x4(object_to_world); }
+        set { object_to_world = to4x4(newValue); }
+    }
+
+    // MDL shading state fields
+    float3 normal;
+    float3 geom_normal;
+    float3 position;
+    float animation_time;
+    float3 text_coords[1];   // NOTE: Must match the value set for "num_texture_spaces "in MdlSdk.cpp
+    float3 tangent_u[1];     // NOTE: Must match the value set for "num_texture_spaces in MdlSdk.cpp
+    float3 tangent_v[1];     // NOTE: Must match the value set for "num_texture_spaces in MdlSdk.cpp
+    float4 text_results[16]; // NOTE: Must match the value set for "num_texture_results" in in MdlSdk.cpp
+    uint ro_data_segment_offset;
+    float4x4 world_to_object;
+    float4x4 object_to_world;
+    uint object_id;
+    float meters_per_scene_unit;
+    uint arg_block_offset;
+
+    // Aurora specific fields
+    float3 geomPosition;
     uint3 indices;
     float3 barycentrics;
+    float2 ior; // x = IOR current medium, y = IOR other side
 };
 
 
@@ -97,7 +144,7 @@ float3 computeShadingPosition(float3 geomPosition, float3 shadingNormal, float3 
 // Computes the shading data (e.g. interpolated vertex data) for the triangle with the specified
 // (primitive) index, at the specified barycentric coordinates.
 ShadingData computeShadingData<GeometryType : IGeometry>(
-    GeometryType geometry, uint triangleIndex, float2 bary2, float3x4 objToWorld)
+    GeometryType geometry, uint triangleIndex, float2 bary2, float3x4 objToWorld, float3x4 worldToObj)
 {
     // Expand barycentrics to 3d.
     float3 barycentrics = computeBarycentrics(bary2);
@@ -155,21 +202,21 @@ ShadingData computeShadingData<GeometryType : IGeometry>(
     // NOTE: If a provided normal has zero length, then the normal will have undefined components
     // (likely NaN), leading to rendering artifacts (likely black pixels) along any path that
     // accesses the normal.
-    shading.objectNormal = normalize(geometry.hasNormals()
+    float3 objectNormal = normalize(geometry.hasNormals()
             ? shading.normal
             : cross(positions[1] - positions[0], positions[2] - positions[0]));
 
     // Compute the shading position from the geometry position and vertex data. If no normals are
     // provided, use the geometric position.
-    shading.objectPosition = geometry.hasNormals() ? computeShadingPosition(shading.geomPosition,
+    float3 objectPosition = geometry.hasNormals() ? computeShadingPosition(shading.geomPosition,
                                                    shading.normal, positions, normals, barycentrics)
-                                             : shading.geomPosition;
+                                                  : shading.geomPosition;
 
     // Transform the position, geometric position, and normal to world space.
     // NOTE: Renormalize the normal as the object-to-world matrix can have a scale.
-    shading.position     = mul(objToWorld, float4(shading.objectPosition, 1.0f));
+    shading.position     = mul(objToWorld, float4(objectPosition, 1.0f));
     shading.geomPosition = mul(objToWorld, float4(shading.geomPosition, 1.0f));
-    shading.normal       = normalize(mul((float3x3)objToWorld, shading.objectNormal));
+    shading.normal       = normalize(mul((float3x3)objToWorld, objectNormal));
     
     // arbitrary up vector used to calculate tangents, if none provided.
     float3 up =
@@ -177,17 +224,31 @@ ShadingData computeShadingData<GeometryType : IGeometry>(
 
     // Compute arbitrary shading tangent from up vector, or use provided one transformed in world space.
     shading.tangent = normalize(geometry.hasTangents() ? normalize(mul((float3x3)objToWorld, shading.tangent))
-                                            : cross(shading.normal, up));
+                                                       : cross(shading.normal, up));
+    // NOTE: Using the provided geometry tangents will make unit tests fail, because the code used for generating the
+    //       golden images seemed to simply always compute the tangent as normalize(cross(shading.normal, up)) rather
+    //       than using the geometry tangents.
 
     // Generate bitangent from normal and tangent.
     shading.bitangent = computeBitangent(shading.normal, shading.tangent);
     shading.bitangentWorld = shading.bitangent; // Keep MaterialX (>= 1.39.x) alias in sync
 
-    shading.objToWorld = objToWorld;
+    shading.object_to_world = to4x4(objToWorld);
+    shading.world_to_object = to4x4(worldToObj);
 
     shading.indices = indices;
 
     shading.barycentrics = barycentrics;
+
+    // MDL specific state
+    float3 geomNormalObj = normalize(cross(positions[1] - positions[0], positions[2] - positions[0]));
+    shading.geom_normal = normalize(mul((float3x3)objToWorld, geomNormalObj));
+    shading.animation_time = 0.0f;
+    // shading.text_results doesn't need to be initialized
+    shading.ro_data_segment_offset = 0;
+    shading.object_id = 0;
+    shading.meters_per_scene_unit = 1.0f;
+    shading.arg_block_offset = 0;
 
     return shading;
 }

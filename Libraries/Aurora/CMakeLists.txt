@@ -60,8 +60,16 @@ if(ENABLE_MATERIALX)
     add_compile_definitions(ENABLE_MATERIALX=1)
 
     find_package(MaterialX REQUIRED) # MaterialX SDK
+    find_package(mdl CONFIG REQUIRED) # NVIDIA MDL SDK
     # Alias the namespace to meet the cmake convention on imported targets
     add_library(MaterialX::GenGlsl ALIAS MaterialXGenGlsl)
+    add_library(MaterialX::GenMdl ALIAS MaterialXGenMdl)
+endif()
+
+# Optionally enable MDL-based MaterialX code generation (requires MaterialX).
+option(ENABLE_MDL "Build with MDL-based MaterialX code generation (requires MaterialX)." ON)
+if(ENABLE_MDL)
+    add_compile_definitions(ENABLE_MDL=1)
 endif()
 
 # Optionally enable NVIDIA denoiser.
@@ -100,6 +108,8 @@ set(COMMON_SOURCE
     "Source/MaterialDefinition.cpp"
     "Source/MaterialShader.h"
     "Source/MaterialShader.cpp"
+    "Source/MdlSdk.h"
+    "Source/MdlSdk.cpp"
     "Source/pch.h"
     "Source/Properties.h"
     "Source/RendererBase.cpp"
@@ -138,10 +148,13 @@ set(COMMON_SHADERS
     "Source/Shaders/GroundPlane.slang"
     "Source/Shaders/InstancePipelineState.slang"
     "Source/Shaders/GlobalPipelineState.slang"
+    "Source/Shaders/HitShaderEntryPoints.slang"
     "Source/Shaders/MainEntryPoints.slang"
     "Source/Shaders/Material.slang"
     "Source/Shaders/GlobalBufferAccessors.slang"
     "Source/Shaders/MaterialXCommon.slang"
+    "Source/Shaders/MDLTargetCodeTypes.slang"
+    "Source/Shaders/MDLRendererRuntime.slang"
     "Source/Shaders/Options.slang"
     "Source/Shaders/PathTracingCommon.slang"
     "Source/Shaders/ShadeFunctions.slang"
@@ -170,13 +183,17 @@ if(ENABLE_DIRECTX_BACKEND)
         set(DIRECTX_MATERIALX_SOURCE
             "Source/MaterialX/BSDFCodeGenerator.cpp"
             "Source/MaterialX/BSDFCodeGenerator.h"
-            "Source/MaterialX/MaterialGenerator.cpp"
             "Source/MaterialX/MaterialGenerator.h"
+            "Source/MaterialX/MaterialGenerator.cpp"
+            "Source/MaterialX/MDLMaterialData.h"
+            "Source/MaterialX/MDLMaterialGenerator.h"
+            "Source/MaterialX/MDLMaterialGenerator.cpp"
         )
     endif()
 
     if(ENABLE_DENOISER)
         set(DIRECTX_DENOISER_SOURCE
+            "Source/MaterialX/MaterialGenerator.h"
             "Source/DirectX/Denoiser.cpp"
             "Source/DirectX/Denoiser.h"
         )
@@ -443,7 +460,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 )
 
 if(ENABLE_MATERIALX)
-    set(MATERIALX_TARGETS MaterialX::GenGlsl)
+    set(MATERIALX_TARGETS MaterialX::GenGlsl MaterialX::GenMdl $<COMPILE_ONLY:mdl::mdl_sdk> ${CMAKE_DL_LIBS})
 else()
     set(MATERIALX_TARGETS "")
 endif()

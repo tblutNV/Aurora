@@ -6,6 +6,9 @@ add_compile_definitions(ENABLE_MATERIALX=1)
 find_package(MaterialX REQUIRED) # MaterialX SDK
 # Alias the namespace to meet the cmake convention on imported targets
 add_library(MaterialX::GenGlsl ALIAS MaterialXGenGlsl)
+add_library(MaterialX::GenMdl ALIAS MaterialXGenMdl)
+
+find_package(mdl CONFIG REQUIRED) # NVIDIA MDL SDK
 
 # List of common helper files shared by all tests. TEST_HELPERS_FOLDER variable is set in parent cmake file.
 set(HELPER_FILES
@@ -36,6 +39,8 @@ set(AURORA_FILES
     "${AURORA_DIR}/Source/MaterialDefinition.h"
     "${AURORA_DIR}/Source/MaterialShader.cpp"
     "${AURORA_DIR}/Source/MaterialShader.h"
+    "${AURORA_DIR}/Source/MdlSdk.cpp"
+    "${AURORA_DIR}/Source/MdlSdk.h"
     "${AURORA_DIR}/Source/pch.h"
     "${AURORA_DIR}/Source/Properties.h"
     "${AURORA_DIR}/Source/RendererBase.cpp"
@@ -94,6 +99,8 @@ PRIVATE
     stb::stb
     Foundation
     MaterialXGenGlsl
+    MaterialXGenMdl
+    $<COMPILE_ONLY:mdl::mdl_sdk> ${CMAKE_DL_LIBS}
 )
 
 # Add helpers include folder.

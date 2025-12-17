@@ -107,42 +107,42 @@ public:
     // Override default setter.
     void setBoolean(const string& name, bool value) override
     {
-        _uniformBuffer.set(name, value);
+        _pUniformBuffer->set(name, value);
         _bIsDirty = true;
     }
 
     // Override default setter.
     void setInt(const string& name, int value) override
     {
-        _uniformBuffer.set(name, value);
+        _pUniformBuffer->set(name, value);
         _bIsDirty = true;
     }
 
     // Override default setter.
     void setFloat(const string& name, float value) override
     {
-        _uniformBuffer.set(name, value);
+        _pUniformBuffer->set(name, value);
         _bIsDirty = true;
     }
 
     // Override default setter.
     void setFloat2(const string& name, const float* value) override
     {
-        _uniformBuffer.set(name, glm::make_vec2(value));
+        _pUniformBuffer->set(name, glm::make_vec2(value));
         _bIsDirty = true;
     }
 
     // Override default setter.
     void setFloat3(const string& name, const float* value) override
     {
-        _uniformBuffer.set(name, glm::make_vec3(value));
+        _pUniformBuffer->set(name, glm::make_vec3(value));
         _bIsDirty = true;
     }
 
     // Override default setter.
     void setMatrix(const string& name, const float* value) override
     {
-        _uniformBuffer.set(name, glm::make_mat4(value));
+        _pUniformBuffer->set(name, glm::make_mat4(value));
         _bIsDirty = true;
     }
 
@@ -166,9 +166,9 @@ public:
     }
     IValues::Type type(const std::string& name) override
     {
-        if (_uniformBuffer.contains(name))
+        if (_pUniformBuffer->contains(name))
         {
-            switch (_uniformBuffer.getType(name))
+            switch (_pUniformBuffer->getType(name))
             {
             case PropertyValue::Type::Bool:
                 return IValues ::Type::Boolean;
@@ -197,9 +197,9 @@ public:
     // Override default clear function.
     void clearValue(const string& name) override
     {
-        if (_uniformBuffer.contains(name))
+        if (_pUniformBuffer->contains(name))
         {
-            _uniformBuffer.reset(name);
+            _pUniformBuffer->reset(name);
         }
         else
         {
@@ -227,13 +227,13 @@ public:
     void setIsOpaque(bool val) { _isOpaque = val; }
 
     // Get the uniform buffer for this material.
-    UniformBuffer& uniformBuffer() { return _uniformBuffer; }
-    const UniformBuffer& uniformBuffer() const { return _uniformBuffer; }
+    UniformBuffer& uniformBuffer() { return *_pUniformBuffer; }
+    const UniformBuffer& uniformBuffer() const { return *_pUniformBuffer; }
 
     // Check if the material has a value for the specified name (either uniform buffer or texture)
     bool hasValue(const string& name) const
     {
-        return _uniformBuffer.contains(name) || 
+        return _pUniformBuffer->contains(name) || 
                _textures.findTexture(name) >= 0 || 
                _textures.findSampler(name) >= 0;
     }
@@ -280,7 +280,7 @@ protected:
 private:
     MaterialDefinitionPtr _pDef;
     MaterialShaderPtr _pShader;
-    UniformBuffer _uniformBuffer;
+    unique_ptr<UniformBuffer> _pUniformBuffer;
     TextureProperties _textures;
     string _name;
 };

@@ -6,6 +6,7 @@ find_package(MaterialX REQUIRED)
 find_package(pxr REQUIRED)
 # Alias the namespace to meet the cmake convention on imported targets
 add_library(MaterialX::GenGlsl ALIAS MaterialXGenGlsl)
+add_library(MaterialX::GenMdl ALIAS MaterialXGenMdl)
 
 # List of common helper files shared by all tests. TEST_HELPERS_FOLDER variable is set in parent cmake file.
 set(HELPER_FILES
@@ -62,6 +63,7 @@ PRIVATE
     OpenGL::GL
     GLEW::glew
     MaterialX::GenGlsl
+    MaterialX::GenMdl
     usd
     hf
     hd

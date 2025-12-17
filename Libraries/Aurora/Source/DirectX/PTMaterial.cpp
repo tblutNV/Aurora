@@ -30,7 +30,7 @@ PTMaterial::PTMaterial(PTRenderer* pRenderer, const string& name, MaterialShader
 bool PTMaterial::update()
 {
     // Do nothing if the material is not dirty.
-    if (!_bIsDirty)
+    if (!_bIsDirty || uniformBuffer().size() == 0)
     {
         return false;
     }

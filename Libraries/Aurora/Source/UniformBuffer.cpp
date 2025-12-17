@@ -47,7 +47,7 @@ size_t UniformBuffer::getOffset(const string& propertyName) const
     auto pField = getField(propertyName);
 
     // Return offset (multiplied by word size) or -1 if not found.
-    return pField ? pField->bufferIndex * sizeof(_data[0]) : -1;
+    return pField ? pField->bufferOffset * sizeof(_data[0]) : -1;
 }
 
 size_t UniformBuffer::getIndex(const string& propertyName) const
@@ -66,7 +66,7 @@ size_t UniformBuffer::getOffsetForVariable(const string& varName) const
     if (iter == _fieldVariableMap.end())
         return (size_t)-1;
     size_t fieldIndex = iter->second;
-    return _fields[fieldIndex].bufferIndex * sizeof(_data[0]);
+    return _fields[fieldIndex].bufferOffset * sizeof(_data[0]);
 }
 
 string UniformBuffer::generateHLSLStruct() const
@@ -96,7 +96,7 @@ string UniformBuffer::generateHLSLStruct() const
             ss << "\t" << getHLSLStringFromType(def.type) << " " << def.variableName << ";";
 
             // Add comment.
-            ss << " // Offset:" << (_fields[i].bufferIndex * sizeof(_data[0]))
+            ss << " // Offset:" << (_fields[i].bufferOffset * sizeof(_data[0]))
                << " Property:" << def.name << endl;
         }
     }
@@ -150,7 +150,7 @@ string UniformBuffer::generateByteAddressBufferAccessors(const string& prefix) c
         ss << " // Get property " << def.name << " from byte address buffer" << endl;
         ss << getHLSLStringFromType(def.type) << " " << prefix << def.variableName
            << "(ByteAddressBuffer buf, int materialOffset = 0) {" << endl;
-        size_t offset = _fields[i].bufferIndex * sizeof(_data[0]);
+        size_t offset = _fields[i].bufferOffset * sizeof(_data[0]);
         switch (def.type)
         {
         case PropertyValue::Type::Bool:
@@ -199,14 +199,23 @@ string UniformBuffer::generateByteAddressBufferAccessors(const string& prefix) c
 
 void UniformBuffer::reset(const string& name)
 {
-    size_t index = getIndex(name);
-    if (index == size_t(-1))
+    auto pField  = getField(name);
+    if (!pField)
     {
         AU_ERROR("Unknown property %s", name.c_str());
         return;
     }
 
-    set(name, _defaults[index]);
+#if ENABLE_MATERIALX && ENABLE_MDL
+    if (_defaultMdlArgBlock)
+    {
+        set(name, (*_defaultMdlArgBlock)[pField->bufferOffset]);
+    }
+    else
+#endif
+    {
+        set(name, (*_defaults)[pField->index]);
+    }
 }
 
 PropertyValue::Type UniformBuffer::getType(const string& propertyName) const
@@ -228,62 +237,79 @@ const string& UniformBuffer::getVariableName(const string& propertyName) const
 
 UniformBuffer::UniformBuffer(
     const UniformBufferDefinition& definition, const vector<PropertyValue>& defaults) :
-    _definition(definition), _defaults(defaults)
+    _definition(definition), _defaults(&defaults)
 {
-    AU_ASSERT(_definition.size() == _defaults.size(),
+    AU_ASSERT(_definition.size() == _defaults->size(),
         "Mismatch between defaults size and definitions size");
 
-    size_t bufferIndex = 0;
+    size_t wordSize     = sizeof(_data[0]);
+    size_t bufferOffset = 0;
     for (size_t i = 0; i < definition.size(); i++)
     {
-        // Get size and alignment of current property, in bytes and words.
+        // Get size and alignment of current property, in bytes.
         PropertyValue::Type type = definition[i].type;
         size_t valAlignment      = getAlignment(type);
         size_t valSize           = getSizeOfType(type);
-        size_t wordSize          = sizeof(_data[0]);
-        size_t numAlignmentWords = valAlignment / wordSize;
-        size_t valSizeWords      = valSize / wordSize;
         AU_ASSERT(valSize % wordSize == 0, "Type too small for uniform buffer");
 
         // HLSL packing ensures properties (that are quadword size or less) cannot cross quad-word
         // boundary.
-        size_t endIndex              = bufferIndex + valSizeWords - 1;
-        bool crossesQuadWordBoundary = (valSize <= 16) && (endIndex / 4 != bufferIndex / 4);
+        size_t endOffset             = bufferOffset + valSize - wordSize;
+        bool crossesQuadWordBoundary = (valSize <= 16) && (endOffset / 16 != bufferOffset / 16);
 
         // Add padding while alignment incorrect and field is crossing quad-word boundary.
-        while (bufferIndex % numAlignmentWords || crossesQuadWordBoundary)
+        while (bufferOffset % valAlignment || crossesQuadWordBoundary)
         {
             // Add padding field.
-            _fields.push_back({ bufferIndex, PropertyValue::Type::Int, -1 });
-            bufferIndex++;
+            _fields.push_back({ bufferOffset, PropertyValue::Type::Int, -1 });
+            bufferOffset += wordSize;
 
             // See if we still cross quad word boundary.
-            endIndex                = bufferIndex + valSizeWords - 1;
-            crossesQuadWordBoundary = (valSize <= 16) && (endIndex / 4 != bufferIndex / 4);
+            endOffset               = bufferOffset + valSize - wordSize;
+            crossesQuadWordBoundary = (valSize <= 16) && (endOffset / 16 != bufferOffset / 16);
         }
 
         // Create field.
         int fieldIndex                                = (int)_fields.size();
         _fieldMap[definition[i].name]                 = fieldIndex;
         _fieldVariableMap[definition[i].variableName] = fieldIndex;
-        _fields.push_back({ bufferIndex, definition[i].type, (int)i });
+        _fields.push_back({ bufferOffset, definition[i].type, (int)i });
 
         // Set default values.
         AU_ASSERT(
-            _definition[i].type == _defaults[i].type, "Default type does not match definition");
-        bufferIndex = copyToBuffer(defaults[i], bufferIndex);
+            _definition[i].type == (*_defaults)[i].type, "Default type does not match definition");
+        bufferOffset = copyToBuffer(defaults[i], bufferOffset);
     }
 
     // Align buffer to 16 bytes.
-    while (bufferIndex % 4)
+    while (bufferOffset % 16)
     {
-        _fields.push_back({ bufferIndex, PropertyValue::Type::Int, -1 });
-        bufferIndex++;
+        _fields.push_back({ bufferOffset, PropertyValue::Type::Int, -1 });
+        bufferOffset += wordSize;
     }
 
     // Ensure the final padding fields are included in buffer size.
-    _data.resize(bufferIndex);
+    _data.resize(bufferOffset / wordSize);
 }
+
+#if ENABLE_MATERIALX && ENABLE_MDL
+UniformBuffer::UniformBuffer(const UniformBufferDefinition& definition,
+    const std::vector<size_t>& offsets, const vector<uint8_t>& defaults) :
+    _definition(definition), _defaultMdlArgBlock(&defaults)
+{
+    for (size_t i = 0; i < definition.size(); i++)
+    {
+        // Create field.
+        int fieldIndex                                = (int)_fields.size();
+        _fieldMap[definition[i].name]                 = fieldIndex;
+        _fieldVariableMap[definition[i].variableName] = fieldIndex;
+        _fields.push_back({ offsets[i], definition[i].type, (int)i });
+    }
+
+    // Set default values.
+    _data = defaults;
+}
+#endif
 
 const UniformBuffer::Field* UniformBuffer::findField(const string& name)
 {
@@ -314,28 +340,28 @@ void UniformBuffer::set(const string& name, const PropertyValue& val)
         return;
     }
 
-    // Copy the vale to the buffer at the index given by bufferIndex.
-    copyToBuffer(val, pField->bufferIndex);
+    // Copy the value to the buffer at the offset given by bufferOffset.
+    copyToBuffer(val, pField->bufferOffset);
 }
 
-size_t UniformBuffer::copyToBuffer(const PropertyValue& val, size_t bufferIndex)
+size_t UniformBuffer::copyToBuffer(const PropertyValue& val, size_t bufferOffset)
 {
     switch (val.type)
     {
     case PropertyValue::Type::Bool:
-        return copyToBuffer<int>(val.asBool(), bufferIndex);
+        return copyToBuffer<int>(val.asBool(), bufferOffset);
     case PropertyValue::Type::Int:
-        return copyToBuffer(val.asInt(), bufferIndex);
+        return copyToBuffer(val.asInt(), bufferOffset);
     case PropertyValue::Type::Float:
-        return copyToBuffer(val.asFloat(), bufferIndex);
+        return copyToBuffer(val.asFloat(), bufferOffset);
     case PropertyValue::Type::Float2:
-        return copyToBuffer(val.asFloat2(), bufferIndex);
+        return copyToBuffer(val.asFloat2(), bufferOffset);
     case PropertyValue::Type::Float3:
-        return copyToBuffer(val.asFloat3(), bufferIndex);
+        return copyToBuffer(val.asFloat3(), bufferOffset);
     case PropertyValue::Type::Float4:
-        return copyToBuffer(val.asFloat4(), bufferIndex);
+        return copyToBuffer(val.asFloat4(), bufferOffset);
     case PropertyValue::Type::Matrix4:
-        return copyToBuffer(val.asMatrix4(), bufferIndex);
+        return copyToBuffer(val.asMatrix4(), bufferOffset);
     default:
         AU_FAIL("Unsupported type for uniform block:%x", val.type);
         return 0;
@@ -389,7 +415,7 @@ string UniformBuffer::getGLSLStringFromType(PropertyValue::Type type)
         return "mat4";
     default:
         AU_FAIL("Unsupported type for uniform block:%x", type);
-        return 0;
+        return {};
     }
 }
 
@@ -413,7 +439,7 @@ string UniformBuffer::getHLSLStringFromType(PropertyValue::Type type)
         return "float4x4";
     default:
         AU_FAIL("Unsupported type for uniform block:%x", type);
-        return 0;
+        return {};
     }
 }
 

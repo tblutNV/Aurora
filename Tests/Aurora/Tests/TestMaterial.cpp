@@ -43,11 +43,14 @@ public:
 
     void setupAssetPaths(const vector<string>& additionalPaths = {})
     {
-
         _paths = { "", dataPath() + "/Materials/", dataPath() + "/Textures/" };
         for (size_t i = 0; i < additionalPaths.size(); i++)
         {
             _paths.push_back(additionalPaths[i]);
+        }
+        for (const string& path : _paths)
+        {
+            defaultRenderer()->addMdlSearchPath(path);
         }
         // Setup the resource loading function to use asset search paths.
         auto loadResourceFunc = [this](const string& uri, vector<unsigned char>* pBufferOut,
@@ -1316,6 +1319,8 @@ TEST_P(MaterialTest, TestMaterialXImageNode)
     // No MaterialX on HGI yet.
     if (!isDirectX())
         return;
+
+    setupAssetPaths();
 
     // Create teapot geom.
     Path geometry = createTeapotGeometry(*pScene);

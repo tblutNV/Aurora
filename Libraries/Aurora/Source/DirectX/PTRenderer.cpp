@@ -314,11 +314,20 @@ TransferBuffer PTRenderer::createTransferBuffer(size_t sz, const string& name,
 ID3D12ResourcePtr PTRenderer::createTexture(uvec2 dimensions, DXGI_FORMAT format,
     const string& name, bool isUnorderedAccess, bool shareable)
 {
+    return createTexture(uvec3(dimensions, 0), format, name, isUnorderedAccess, shareable);
+}
+
+ID3D12ResourcePtr PTRenderer::createTexture(uvec3 dimensions, DXGI_FORMAT format,
+    const string& name, bool isUnorderedAccess, bool shareable)
+{
     // Prepare a texture description.
     D3D12_RESOURCE_FLAGS resourceFlag =
         isUnorderedAccess ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
-    CD3DX12_RESOURCE_DESC texDesc =
-        CD3DX12_RESOURCE_DESC::Tex2D(format, dimensions.x, dimensions.y, 1, 1, 1, 0, resourceFlag);
+    CD3DX12_RESOURCE_DESC texDesc = dimensions.z > 0
+        ? CD3DX12_RESOURCE_DESC::Tex3D(
+              format, dimensions.x, dimensions.y, uint16_t(dimensions.z), 1, resourceFlag)
+        : CD3DX12_RESOURCE_DESC::Tex2D(
+              format, dimensions.x, dimensions.y, 1, 1, 1, 0, resourceFlag);
 
     // Set the initial resource state to "copy" or unordered access, because that is what the render
     // process expects as the state.
@@ -730,9 +739,10 @@ void PTRenderer::renderInternal(uint32_t sampleStart, uint32_t sampleCount)
     {
         // If shader rebuild required, wait for GPU to be idle, then rebuild.
         waitForTask();
-        int globalTextureCount, globalSamplerCount;
-        dxScene()->computeMaterialTextureCount(globalTextureCount, globalSamplerCount);
-        shaderLibrary().rebuild(globalTextureCount, globalSamplerCount);
+        int globalTextureCount, globalTexture3DCount, globalSamplerCount;
+        dxScene()->computeMaterialTextureCount(
+            globalTextureCount, globalTexture3DCount, globalSamplerCount);
+        shaderLibrary().rebuild(globalTextureCount, globalTexture3DCount, globalSamplerCount);
 
         // Update the ray gen shader table after rebuild.
         updateRayGenShaderTable();
@@ -859,21 +869,7 @@ void PTRenderer::updateFrameData()
 
 void PTRenderer::updateSceneResources()
 {
-    // Do nothing if the descriptor heap is unchanged.
-    // NOTE: A changing descriptor heap also corresponds with an entirely new scene.
-    if (!_isDescriptorHeapChanged)
-    {
-        return;
-    }
-
-    // Set the descriptor heap on the ray gen shader table, for descriptors needed from the heap for
-    // the ray gen shader. The ray gen shader expects the first entry to be the direct texture.
-    uint8_t* pShaderTableMappedData = _rayGenShaderTable.map();
-    CD3DX12_GPU_DESCRIPTOR_HANDLE handle(_pDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-        kDirectDescriptorOffset, _handleIncrementSize);
-    ::memcpy_s(pShaderTableMappedData + SHADER_ID_SIZE, _rayGenShaderTableSize, &handle,
-        SHADER_RECORD_DESCRIPTOR_SIZE);
-    _rayGenShaderTable.unmap();
+    // Nothing to do here. Resource changes are handled by the scene.
 }
 
 void PTRenderer::updateOutputResources()
@@ -1209,10 +1205,23 @@ void PTRenderer::submitRayDispatch(
         handle.Offset(dxScene()->environment()->descriptorCount(), _handleIncrementSize);
         pCommandList->SetComputeRootDescriptorTable(12, handle);
 
-        // 13) The global material sampler array
+        // 12) The global material 3D texture array
+        if (dxScene()->numActiveMaterialTextures3D() > 0)
+        {
+            handle.Offset(dxScene()->numActiveMaterialTextures(), _handleIncrementSize);
+            pCommandList->SetComputeRootDescriptorTable(13, handle);
+        }
+
+        // 14) The global material sampler array
         CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(
             _pSamplerDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-        pCommandList->SetComputeRootDescriptorTable(13, samplerHandle);
+        pCommandList->SetComputeRootDescriptorTable(14, samplerHandle);
+
+        // 15) AOV output images
+        CD3DX12_GPU_DESCRIPTOR_HANDLE handle2(
+            _pDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), kDirectDescriptorOffset,
+            _handleIncrementSize);
+        pCommandList->SetComputeRootDescriptorTable(15, handle2);
     }
 
     // Launch the ray generation shader with the dispatch, which performs path tracing.

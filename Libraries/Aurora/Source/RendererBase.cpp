@@ -60,7 +60,19 @@ RendererBase::RendererBase(uint32_t taskCount) : FixedValues(propertySet()), _ta
     _pAssetMgr = make_unique<AssetManager>();
     _pAssetMgr->enableVerticalFlipOnImageLoad(_values.asBoolean(kLabelIsFlipImageYEnabled));
 
+#if ENABLE_MATERIALX && ENABLE_MDL
+    // Initialize the MDL SDK.
+    _pMdlSdk = make_shared<MdlSdk>();
+#endif
+
     assert(taskCount > 0);
+}
+
+RendererBase::~RendererBase()
+{
+    // Explicitly release the scene before the MDL SDK so that all
+    // handles are released before shutting down the SDK.
+    _pScene.reset();
 }
 
 void RendererBase::setOptions(const Properties& options)
@@ -88,6 +100,15 @@ void RendererBase::setCamera(
     _cameraProj    = make_mat4(proj);
     _focalDistance = focalDistance;
     _lensRadius    = lensRadius;
+}
+
+void RendererBase::addMdlSearchPath(const std::string& path)
+{
+#if ENABLE_MATERIALX && ENABLE_MDL
+    _pMdlSdk->mdlConfig()->add_mdl_path(path.c_str());
+#else
+    (void)path;
+#endif
 }
 
 // Note that this handles strings differently than the implementation in SceneBase.

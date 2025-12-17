@@ -418,10 +418,13 @@ enum class ImageFormat : uint8_t
     /// 8-bit per-channel, 4-channel normalized integer.
     Integer_RGBA,
 
-    /// 32-bit per-channel, 2-channel normalized integer.
+    /// 32-bit per-channel, 2-channel integer.
     Integer_RG,
 
-    /// 16-bit per-channel, 4-channel normalized short.
+    /// 32-bit per channel, 1-channel integer.
+    Integer_R,
+
+    /// 16-bit per-channel, 4-channel short.
     Short_RGBA,
 
     /// 16-bit per-channel, 4-channel half-float.
@@ -432,6 +435,9 @@ enum class ImageFormat : uint8_t
 
     /// 32-bit per-channel, 3-channel float.
     Float_RGB,
+
+    /// 32-bit per-channel, 2-channel float.
+    Float_RG,
 
     /// 32-bit per-channel, single channel float.
     Float_R
@@ -617,6 +623,9 @@ public:
 
         /// The height of image in pixels.
         uint32_t height = 0;
+
+        /// The depth of image in pixels.
+        uint32_t depth = 0;
 
         /// The name of the image.
         /// \note This is for client reference only, and does not need to be unique.
@@ -1182,6 +1191,11 @@ public:
     /// \desc Set the callback function used to load resources, such as textures, from a URI.
     /// \param func Callback function to be used for all subsequent loading.
     virtual void setLoadResourceFunction(LoadResourceFunction func) = 0;
+
+    /// \desc Add an MDL search path that is used to resolve resource file paths when generating
+    /// MDL code from MaterialX.
+    /// \param path The search path to add.
+    virtual void addMdlSearchPath(const std::string& path) = 0;
 
 protected:
     virtual ~IRenderer() = default; // hidden destructor

@@ -777,7 +777,7 @@ float3 calculateGGXLightDirectionAndPDF(float3 tangent, float3 bitangent, float3
 BSDF_AND_COSINE sampleMaterialAllLobes(Material material, ShadingData shading, float3 Vw,
     float2 random, out float3 Lw, out float pdf, out int lobeID)
 {
-    lobeID = 1;
+    lobeID = DIFFUSE_LOBE;
     // Sample a cosine-weighted direction from a hemisphere above the normal. If the view direction
     // is not in the same hemisphere as the normal, flip the light direction to allow proper shading
     // of the backface.
@@ -811,7 +811,7 @@ BSDF_AND_COSINE evaluateMaterialAndPDF(Material material, ShadingData shading,
 
     // Default values (avoid compile errors if lobes disabled).
     pdf    = 0.0;
-    lobeID = -1;
+    lobeID = NO_SECONDARY_RAY;
 
     // Roughness influenced by coat.
     float coat_affect_roughness_factor =
@@ -1040,7 +1040,7 @@ BSDF_AND_COSINE sampleMaterial(Material material, ShadingData shading, float3 Vw
     // Default values (avoid compile errors if lobes disabled).
     Lw     = float3(1, 0, 0);
     pdf    = 0.0;
-    lobeID = -1;
+    lobeID = NO_SECONDARY_RAY;
 
     // Roughness influenced by coat.
     float coat_affect_roughness_factor =

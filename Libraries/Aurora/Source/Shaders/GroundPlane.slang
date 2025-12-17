@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#ifndef __GROUND_PLANE_H__
+#define __GROUND_PLANE_H__
 
 #include "BSDFCommon.slang"
 #include "Colors.slang"
@@ -192,3 +194,53 @@ int setupGroundPlaneRay(float3 hitPosition, GroundPlane groundPlane, RaytracingA
     return CAMERA_RAY;
 }
 
+bool evaluateGroundPlane(
+    inout InstanceRayPayload rayPayload, float3 rayOrigin, float3 rayDirection, Environment environment)
+{
+    const bool onlyOpaqueShadowHits = gFrameData.isForceOpaqueShadowsEnabled;
+    const int maxTraceDepth = gFrameData.traceDepth;
+
+    float3 groundPlanePosition = 0;
+    float groundPlaneDistance = INFINITY;
+    if (rayPayload.isPrimaryRay
+        && gGroundPlane.enabled
+        && intersectGroundPlane(gGroundPlane, rayOrigin, rayDirection, groundPlanePosition, groundPlaneDistance)
+        && groundPlaneDistance < RayTCurrent())
+    {
+        float3 groundPlaneRayDirection;
+        float3 groundPlaneRayOrigin;
+        float3 groundPlaneRayColor;
+
+        // Shade the ground plane.
+        int groundPlaneRayType = setupGroundPlaneRay(groundPlanePosition, gGroundPlane, gScene, environment, rayOrigin, rayDirection,
+                onlyOpaqueShadowHits, maxTraceDepth, rayPayload.rng,
+                groundPlaneRayDirection, groundPlaneRayOrigin, groundPlaneRayColor);
+
+        if (groundPlaneRayType == GROUND_PLANE_REFLECTION_RAY)
+        {
+            // The ground plane reflection path was selected, continue the path as a reflection ray.
+            rayPayload.nextRayType = GROUND_PLANE_REFLECTION_RAY;
+
+            // Setup the next ray direction, origin and contribution from ground plane.
+            rayPayload.rayContribution *= groundPlaneRayColor;
+            rayPayload.nextRayDirection = groundPlaneRayDirection;
+            rayPayload.nextRayOrigin = groundPlaneRayOrigin;
+
+            // This ray is no longer a primary ray.
+            rayPayload.isPrimaryRay = false;
+
+            // The ray was absorbed.
+            return true;
+        }
+        else
+        {
+            // If the ray was not absorbed scale the contribution based on ground plane color.
+            rayPayload.rayContribution *= groundPlaneRayColor;
+        }
+    }
+
+    // Ray was not absorbed.
+    return false;
+}
+
+#endif // __GROUND_PLANE_H__

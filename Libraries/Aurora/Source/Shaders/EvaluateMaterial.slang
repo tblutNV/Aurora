@@ -27,9 +27,6 @@ Material evaluateMaterialForShader(
 Material evaluateMaterialForShader(
     int shaderIndex, ShadingData shading, int mtlOffset, inout float3 materialNormal, out bool isGeneratedNormal)    
 {
-
-    mtlOffset = mtlOffset + kMaterialHeaderSize;
-
     return evaluateDefaultMaterial(
         shading, mtlOffset,
         materialNormal, isGeneratedNormal);

@@ -55,6 +55,9 @@ public:
     // environment.
     float luminanceIntegral() { return _luminanceIntegral; }
 
+    // Whether this is a 3D texture
+    bool is3D() const { return _dimensions.z > 0; }
+
 private:
     /*** Private Functions ***/
 
@@ -68,7 +71,7 @@ private:
     ID3D12ResourcePtr _pAliasMapBuffer;
     ImageFormat _format = ImageFormat::Integer_RGBA;
     bool _linearize     = true;
-    uvec2 _dimensions;
+    uvec3 _dimensions;
     string _name = "UNINITIALIZED";
 };
 MAKE_AURORA_PTR(PTImage);

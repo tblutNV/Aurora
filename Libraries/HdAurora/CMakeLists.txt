@@ -11,6 +11,7 @@ find_package(MaterialX REQUIRED) # MaterialX SDK
 find_package(pxr REQUIRED) # Find the Universal Scene Description (USD) library
 # Alias the namespace to meet the cmake convention on imported targets
 add_library(MaterialX::GenGlsl ALIAS MaterialXGenGlsl)
+add_library(MaterialX::GenMdl ALIAS MaterialXGenMdl)
 # Include system python libraries if needed by USD.
 if(USD_BUILT_WITH_PYTHON)
   find_package (Python3 COMPONENTS Development)
@@ -71,6 +72,7 @@ PRIVATE
     OpenGL::GL
     GLEW::glew
     MaterialX::GenGlsl
+    MaterialX::GenMdl
     usd
     hf
     hd

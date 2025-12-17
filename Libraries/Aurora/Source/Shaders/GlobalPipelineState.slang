@@ -98,4 +98,15 @@ SamplerState gSamplerArray[] : register(s0);
 [[vk::binding(6)]] SamplerState gDefaultSampler : register(s0);
 #endif
 
+// Output and AOV textures.
+// Must match root signature defined in PTShaderLibrary::initRootSignatures and the descriptors
+// uploaded to the heap in PTRenderer::updateOutputResources and PTRenderer::updateDenoisingResources.
+[[vk::binding(1)]] RWTexture2D<float4> gResult : register(u0);
+RWTexture2D<float> gDepthNDC : register(u1);
+RWTexture2D<float> gDepthView : register(u2);
+RWTexture2D<float4> gNormalRoughness : register(u3);
+RWTexture2D<float4> gBaseColorMetalness : register(u4);
+RWTexture2D<float4> gDiffuse : register(u5);
+RWTexture2D<float4> gGlossy : register(u6);
+
 #endif // GLOBALPIPELINESTATE_H

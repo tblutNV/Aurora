@@ -3,17 +3,17 @@
 <materialx version = "1.38"> 
   <nodegraph name="NG1">
     <image name="base_color_image" type="color3">
-      <parameter name="file" type="filename" value="../Textures/CoatOfArms.bmp" />
-      <parameter name="uaddressmode" type="string" value="periodic" />
-      <parameter name="vaddressmode" type="string" value="periodic" />
+      <input name="file" type="filename" value="../Textures/CoatOfArms.bmp" />
+      <input name="uaddressmode" type="string" value="periodic" />
+      <input name="vaddressmode" type="string" value="periodic" />
     </image>
     <output name="out1" type="color3" nodename="base_color_image" />
   </nodegraph>
   <nodegraph name="NG2">
     <image name="specular_roughness_image" type="float">
-      <parameter name="file" type="filename" value="../Textures/fishscale_roughness.png" />
-      <parameter name="uaddressmode" type="string" value="periodic" />
-      <parameter name="vaddressmode" type="string" value="periodic" />
+      <input name="file" type="filename" value="../Textures/fishscale_roughness.png" />
+      <input name="uaddressmode" type="string" value="periodic" />
+      <input name="vaddressmode" type="string" value="periodic" />
     </image>
     <output name="out1" type="float" nodename="specular_roughness_image" />
   </nodegraph>

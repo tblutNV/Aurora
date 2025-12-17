@@ -48,7 +48,10 @@ ByteAddressBuffer gLayerGeometryBuffer : register(t7);
 ByteAddressBuffer gTransformMatrixBuffer : register(t8);
 
 // Material textures for all the scene materials.  Looked up using indices stored in material header.
-Texture2D<float4> gGlobalMaterialTextures[] : register(t9);
+Texture2D<float4> gGlobalMaterialTextures[] : register(t9, space0);
+
+// Used only for MDL code path.
+Texture3D<float4> gGlobalMaterialTextures3D[] : register(t9, space1);
 
 // =================================================================================================
 // Instance buffer accessor functions

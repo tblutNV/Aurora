@@ -17,6 +17,10 @@
 #include "Properties.h"
 #include "SceneBase.h"
 
+#if ENABLE_MATERIALX
+#include "MdlSdk.h"
+#endif
+
 BEGIN_AURORA
 
 class SceneBase;
@@ -74,6 +78,7 @@ public:
         float lensRadius = 0.0f) override;
     void setCamera(
         const float* view, const float* proj, float focalDistance, float lensRadius) override;
+    void addMdlSearchPath(const std::string& path) override;
 
     /*** Functions ***/
 
@@ -82,6 +87,9 @@ public:
     void propertiesToValues(const Properties& properties, IValues& values);
 
     unique_ptr<AssetManager>& assetManager() { return _pAssetMgr; }
+#if ENABLE_MATERIALX && ENABLE_MDL
+    shared_ptr<MdlSdk>& mdlSdk() { return _pMdlSdk; }
+#endif
 
 // TODO: Destruction via shared_ptr is not safe, we should have some kind of kill list system, but
 // can't seem to get it to work.
@@ -97,6 +105,8 @@ public:
     static const int kMaxTraceDepth;
 
 protected:
+    virtual ~RendererBase(); // hidden destructor
+
     // Layout of per-frame parameters.
     // Must match the GPU version Frame.slang.
     struct FrameData
@@ -209,6 +219,11 @@ protected:
 
     // Asset manager for loading external assets.
     unique_ptr<AssetManager> _pAssetMgr;
+
+#if ENABLE_MATERIALX && ENABLE_MDL
+    // NVIDIA MDL SDK. Used for generating BSDF code for MaterialX.
+    shared_ptr<MdlSdk> _pMdlSdk;
+#endif
 };
 MAKE_AURORA_PTR(RendererBase);
 

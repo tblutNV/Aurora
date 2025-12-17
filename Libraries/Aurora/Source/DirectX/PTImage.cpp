@@ -29,7 +29,7 @@ PTImage::PTImage(PTRenderer* pRenderer, const IImage::InitData& initData)
     _pRenderer  = pRenderer;
     _format     = initData.format;
     _linearize  = initData.linearize;
-    _dimensions = uvec2(initData.width, initData.height);
+    _dimensions = uvec3(initData.width, initData.height, initData.depth);
     _name       = initData.name;
 
     // Prepare the D3D12 texture resource.
@@ -65,6 +65,8 @@ size_t PTImage::getBytesPerPixel(ImageFormat format)
         return 4;
     case ImageFormat::Float_R:
         return 4;
+    case ImageFormat::Float_RG:
+        return 8;
     case ImageFormat::Float_RGB:
         return 12;
     case ImageFormat::Float_RGBA:
@@ -75,6 +77,8 @@ size_t PTImage::getBytesPerPixel(ImageFormat format)
         return 8;
     case ImageFormat::Integer_RG:
         return 8;
+    case ImageFormat::Integer_R:
+        return 4;
     case ImageFormat::Byte_R:
         return 1;
     }
@@ -93,6 +97,8 @@ DXGI_FORMAT PTImage::getDXFormat(ImageFormat format, bool linearize)
         return linearize ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     case ImageFormat::Float_R:
         return DXGI_FORMAT_R32_FLOAT;
+    case ImageFormat::Float_RG:
+        return DXGI_FORMAT_R32G32_FLOAT;
     case ImageFormat::Float_RGB:
         return DXGI_FORMAT_R32G32B32_FLOAT;
     case ImageFormat::Float_RGBA:
@@ -103,6 +109,8 @@ DXGI_FORMAT PTImage::getDXFormat(ImageFormat format, bool linearize)
         return DXGI_FORMAT_R16G16B16A16_UNORM;
     case ImageFormat::Integer_RG:
         return DXGI_FORMAT_R32G32_UINT;
+    case ImageFormat::Integer_R:
+        return DXGI_FORMAT_R32_UINT;
     case ImageFormat::Byte_R:
         return DXGI_FORMAT_R8_UNORM;
     }
@@ -121,8 +129,16 @@ void PTImage::createSRV(
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping         = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format                          = dxFormat;
-    srvDesc.ViewDimension                   = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels             = UINT_MAX;
+    if (pImage && pImage->is3D())
+    {
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+        srvDesc.Texture3D.MipLevels = UINT_MAX;
+    }
+    else
+    {
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MipLevels = UINT_MAX;
+    }
 
     // Create the SRV with the specified descriptor handle.
     // NOTE: This will create a null descriptor if the image pointer is null.

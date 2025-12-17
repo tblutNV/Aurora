@@ -80,6 +80,10 @@ class UniformBuffer
 public:
     // Constructor.
     UniformBuffer(const UniformBufferDefinition& definition, const vector<PropertyValue>& defaults);
+#if ENABLE_MATERIALX && ENABLE_MDL
+    UniformBuffer(const UniformBufferDefinition& definition,
+        const std::vector<size_t>& offsets, const vector<uint8_t>& defaults);
+#endif
 
     // Sets a named property in the buffer.
     template <typename ValType>
@@ -102,7 +106,7 @@ public:
         }
         PropertyValue::Type type = _definition[pField->index].type;
         AU_ASSERT(getSizeOfType(type) == sizeof(ValType), "Type mismatch.");
-        res = *(ValType*)&_data[pField->bufferIndex];
+        res = *(ValType*)&_data[pField->bufferOffset];
 
         return res;
     }
@@ -152,8 +156,8 @@ private:
     // A field within the buffer, can be property or empty padding field (in which case index is -1)
     struct Field
     {
-        // Index within data buffer.
-        size_t bufferIndex = 0;
+        // Byte offset within data buffer.
+        size_t bufferOffset = 0;
         // Type of property.
         PropertyValue::Type type = PropertyValue::Type::Undefined;
         // Index to definition in _definition (-1 if padding)
@@ -165,16 +169,16 @@ private:
     void set(const string& name, const PropertyValue& val);
 
     template <typename ValType>
-    size_t copyToBuffer(const ValType& val, size_t bufferIndex)
+    size_t copyToBuffer(const ValType& val, size_t bufferOffset)
     {
         size_t numWords = sizeof(ValType) / sizeof(_data[0]);
-        if (_data.size() < bufferIndex + numWords)
+        if (_data.size() < bufferOffset + numWords)
         {
-            _data.resize(bufferIndex + numWords);
+            _data.resize(bufferOffset + numWords);
         }
-        ValType* pDstData = (ValType*)&_data[bufferIndex];
+        ValType* pDstData = (ValType*)&_data[bufferOffset];
         *pDstData         = val;
-        return bufferIndex + numWords;
+        return bufferOffset + numWords;
     }
 
     static size_t getSizeOfType(PropertyValue::Type type);
@@ -184,11 +188,14 @@ private:
     size_t copyToBuffer(const PropertyValue& val, size_t bufferIndex);
     const Field* findField(const string& name);
     vector<Field> _fields;
-    vector<uint32_t> _data;
+    vector<uint8_t> _data;
     map<string, size_t> _fieldMap;
     map<string, size_t> _fieldVariableMap;
     const UniformBufferDefinition& _definition;
-    const vector<PropertyValue>& _defaults;
+    const vector<PropertyValue>* _defaults = nullptr;
+#if ENABLE_MATERIALX && ENABLE_MDL
+    const vector<uint8_t>* _defaultMdlArgBlock = nullptr;
+#endif
 };
 
 END_AURORA

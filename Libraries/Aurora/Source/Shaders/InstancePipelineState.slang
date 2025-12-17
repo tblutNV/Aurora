@@ -37,6 +37,8 @@ cbuffer gInstanceData : register(b0, space1)
     bool gHasTexCoords;        // Are there texture coordinates?
     bool gIsOpaque;            // Is the geometry opaque?
     int gInstanceBufferOffset; // Offset of instance's data within global instance byte buffer.
+    int gInstanceMaterialBufferOffset; // Offset of the instance's material data. Only usable for MDL code path.
+    int gInstanceMaterialArgumentsOffset; // Offset of the instance's material arguments data. Only usable for MDL code path.
 }
 
 // To hide DX-Vulkan differences, expose geometry access using functions.

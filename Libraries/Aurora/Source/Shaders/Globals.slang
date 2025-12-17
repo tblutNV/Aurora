@@ -21,8 +21,9 @@
 #define M_RAY_TMIN 0.01f
 
 // Miss shader indices.
-#define kMissNull 0       // for a disabled miss shader (no effect)
-#define kMissShadow 1     // for shadow rays, forced to opaque
+#define kMissNull 0     // for a disabled miss shader (no effect)
+#define kMissInstance 1 // for instance rays
+#define kMissShadow 2   // for shadow rays, forced to opaque
 
 // Black and white constant values, which can also be used as a float3.
 #define BLACK 0.0f

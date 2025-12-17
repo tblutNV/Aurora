@@ -15,6 +15,10 @@
 
 #include "MaterialShader.h"
 
+#if ENABLE_MATERIALX && ENABLE_MDL
+#include "MaterialX/MDLMaterialData.h"
+#endif
+
 BEGIN_AURORA
 
 class MaterialBase;
@@ -45,12 +49,22 @@ struct MaterialDefaultValues
 class MaterialDefinition
 {
 public:
-    MaterialDefinition(const MaterialShaderSource& source, const MaterialDefaultValues& defaults,
-        function<void(MaterialBase&)> updateFunc, bool isAlwaysOpaque) :
+    MaterialDefinition(
+        const MaterialShaderSource& source,
+        const MaterialDefaultValues& defaults,
+        function<void(MaterialBase&)> updateFunc,
+        bool isAlwaysOpaque
+#if ENABLE_MATERIALX && ENABLE_MDL
+        , const MaterialXCodeGen::MDLMaterialDataPtr& pMdlData = nullptr
+#endif
+        ) :
         _source(source),
         _defaults(defaults),
         _updateFunc(updateFunc),
         _isAlwaysOpaque(isAlwaysOpaque)
+#if ENABLE_MATERIALX && ENABLE_MDL
+        , _pMdlData(pMdlData)
+#endif
     {
     }
     MaterialDefinition() {}
@@ -79,6 +93,11 @@ public:
     // Returns whether the material is always opaque, regardless of the property values.
     bool isAlwaysOpaque() const { return _isAlwaysOpaque; }
 
+#if ENABLE_MATERIALX && ENABLE_MDL
+    bool hasMdlData() const { return !!_pMdlData; }
+    const MaterialXCodeGen::MDLMaterialDataPtr& mdlData() const { return _pMdlData; }
+#endif
+
 private:
     // The source code (and unique shader ID) for this material.
     MaterialShaderSource _source;
@@ -91,6 +110,11 @@ private:
 
     // Whether this material is guaranteed to be always opaque, regardless of the property values.
     bool _isAlwaysOpaque;
+
+#if ENABLE_MATERIALX && ENABLE_MDL
+    // Optional data needed for MDL materials.
+    MaterialXCodeGen::MDLMaterialDataPtr _pMdlData;
+#endif
 };
 
 // Shared point to material definition.

@@ -34,9 +34,9 @@
 #define DIFFUSE_LOBE 7      // diffuse_brdf
 
 // Ray types (in addition to the lobe IDs defined above.)
-#define NO_SECONDARY_RAY    -1
-#define CAMERA_RAY         -2
-#define GROUND_PLANE_REFLECTION_RAY         -3
+#define NO_SECONDARY_RAY 8
+#define CAMERA_RAY 9
+#define GROUND_PLANE_REFLECTION_RAY 10
 
 // =================================================================================================
 // Vector Conventions

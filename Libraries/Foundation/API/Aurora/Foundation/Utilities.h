@@ -154,5 +154,10 @@ inline int iwrap(int x, int y)
 std::string replace(
     const std::string& str, const std::string& searchTerm, const std::string& replaceTerm);
 
+/// Return a list of tokens from a string with a given delimeter.
+/// Empty strings are added if delimeters appear at the beginning/end
+/// or multiple delimiters appear in sequence.
+std::vector<std::string> split(const std::string& str, char delimiter);
+
 } // namespace Foundation
 } // namespace Aurora

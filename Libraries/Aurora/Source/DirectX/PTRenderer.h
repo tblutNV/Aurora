@@ -97,6 +97,8 @@ public:
     void updateBuffer(TransferBuffer& bufferOut, FillDataFunction<DataType> fillDataFunction);
     ID3D12ResourcePtr createTexture(uvec2 dimensions, DXGI_FORMAT format, const string& name = "",
         bool isUnorderedAccess = false, bool shareable = false);
+    ID3D12ResourcePtr createTexture(uvec3 dimensions, DXGI_FORMAT format, const string& name = "",
+        bool isUnorderedAccess = false, bool shareable = false);
     D3D12_GPU_VIRTUAL_ADDRESS getScratchBuffer(size_t size);
     void getVertexBuffer(VertexBuffer& vertexBuffer, void* pData, size_t size);
     void transferBufferUpdated(const TransferBuffer& buffer);

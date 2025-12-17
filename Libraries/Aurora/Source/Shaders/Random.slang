@@ -145,4 +145,11 @@ float2 random2D(inout Random rng)
     return randomNext2D(rng);
 }
 
+float4 random4D(inout Random rng)
+{
+    float2 r0 = randomNext2D(rng);
+    float2 r1 = randomNext2D(rng);
+    return float4(r0.x, r0.y, r1.x, r1.y);
+}
+
 #endif // __RANDOM_H__
